@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IRC log viewer</title>
+<style>
+:root{color-scheme:light;--bg:#fff;--fg:#1f2328;--mut:#6a737d;--line:#d8dee4;--bar:#f6f8fa;
+--acc:#0969da;--hit:#fff3a8;--nl:38%;--l1:#dbeafe;--l2:#bfdbfe;--l3:#93c5fd;--l4:#60a5fa;--mark:#fff8c5}
+:root[data-theme=dark]{color-scheme:dark;--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--line:#30363d;--bar:#161b22;
+--acc:#4493f8;--hit:#6b5300;--nl:72%;--l1:#10243f;--l2:#16345c;--l3:#1d4a85;--l4:#2a66b8;--mark:#3a3000}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){color-scheme:dark;--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--line:#30363d;--bar:#161b22;
+--acc:#4493f8;--hit:#6b5300;--nl:72%;--l1:#10243f;--l2:#16345c;--l3:#1d4a85;--l4:#2a66b8;--mark:#3a3000}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+button{cursor:pointer;background:var(--bar)}
+button:disabled{opacity:.4;cursor:default}
+header{position:sticky;top:0;z-index:2;background:var(--bar);border-bottom:1px solid var(--line);
+ padding:8px 12px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+header b{font-size:16px}
+#q{flex:1;min-width:13em;max-width:30em}
+label{white-space:nowrap}
+#info{color:var(--mut)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 19rem;gap:18px;width:80vw;max-width:none;margin:0 auto;padding:12px}
+aside{position:sticky;top:64px;align-self:start;display:flex;flex-direction:column;gap:12px}
+@media (max-width:860px){.layout{grid-template-columns:1fr;width:auto}aside{position:static;order:-1}}
+.box{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.box h3{margin:0 0 6px;font-size:13px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+#daybar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:2px 0 10px}
+#daytitle{font-size:18px}
+#daystats{color:var(--mut)}
+#log{font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;border-top:1px solid var(--line)}
+.day{margin:16px 0 4px;padding-top:6px;border-top:1px solid var(--line);font-family:system-ui,sans-serif;font-weight:600}
+.day button{border:0;background:none;color:var(--acc);padding:0;font-weight:600}
+.row{display:flex;gap:10px;padding:1px 4px;border-left:3px solid transparent}
+.row:hover{background:var(--bar)}
+.row.hit{border-left-color:var(--acc)}
+.row.focus{background:var(--mark);border-left-color:var(--acc)}
+.time{flex:none;color:var(--mut);border:0;background:none;padding:0;font:inherit}
+.time.link{cursor:pointer}
+.time.link:hover{color:var(--acc);text-decoration:underline}
+.nick{flex:none;width:11em;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ font-weight:bold;cursor:pointer;color:hsl(var(--h) 60% var(--nl))}
+.txt{flex:1;white-space:pre-wrap;overflow-wrap:anywhere}
+.event .txt{color:var(--mut)}
+.action .txt{font-style:italic}
+mark{background:var(--hit);color:inherit;border-radius:2px}
+.empty{color:var(--mut);padding:14px 4px;font-family:system-ui,sans-serif}
+@media (max-width:640px){.row{display:block}.nick{display:inline;width:auto}.txt{display:inline}.time{margin-right:6px}}
+/* calendar */
+#cal .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-weight:600}
+#cal .head button{padding:0 9px;font-size:16px;line-height:1.4}
+table.cal{width:100%;border-collapse:separate;border-spacing:2px;table-layout:fixed}
+table.cal th{font-size:11px;font-weight:600;color:var(--mut);padding:2px 0}
+table.cal td{padding:0;text-align:center}
+table.cal button{width:100%;padding:5px 0;border:1px solid transparent;border-radius:6px;background:transparent;font-size:13px}
+table.cal button.none{color:var(--mut);opacity:.45;cursor:default}
+table.cal button.has{background:var(--l1)}
+table.cal button.l2{background:var(--l2)}
+table.cal button.l3{background:var(--l3)}
+table.cal button.l4{background:var(--l4)}
+table.cal button.hit{box-shadow:inset 0 0 0 2px #e3a008;font-weight:700}
+table.cal button.sel{border-color:var(--fg);font-weight:700}
+.legend{margin-top:6px;color:var(--mut);font-size:12px}
+.row2{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.row2 select{flex:1;min-width:0}
+textarea{width:100%;height:5.5em;font:12px ui-monospace,Menlo,Consolas,monospace;margin-top:6px}
+.drop{border:2px dashed var(--line);border-radius:8px;padding:8px;text-align:center;color:var(--mut);margin-bottom:6px}
+body.dragging .drop{border-color:var(--acc);color:var(--acc)}
+.talkers div.t{display:flex;justify-content:space-between;gap:8px}
+.kv{display:flex;justify-content:space-between;gap:8px}
+.kv span:first-child{color:var(--mut)}
+.box h3.sub{margin-top:10px}
+.meter{height:4px;border-radius:2px;background:var(--acc);opacity:.55;margin:1px 0 4px}
+.hours{display:flex;align-items:flex-end;gap:1px;height:44px;margin-top:2px}
+.hours i{flex:1;background:var(--acc);opacity:.6;min-height:1px;border-radius:1px 1px 0 0}
+.hours i.peak{opacity:1}
+.hourlab{display:flex;justify-content:space-between;color:var(--mut);font-size:11px}
+.talkers b{cursor:pointer;color:hsl(var(--h) 60% var(--nl))}
+</style>
+</head>
+<body>
+<header>
+  <b id="title">IRC log</b>
+  <input id="q" type="search" placeholder='Search all days...  "exact phrase" works' autocomplete="off">
+  <select id="nick" title="Only this nick"><option value="">All nicks</option></select>
+  <label><input id="hide" type="checkbox" checked> hide joins/parts</label>
+  <select id="theme" title="Colour theme">
+    <option value="auto">Theme: auto</option>
+    <option value="light">Theme: light</option>
+    <option value="dark">Theme: dark</option>
+  </select>
+  <span id="info"></span>
+</header>
+
+<div class="layout">
+  <main>
+    <div id="daybar">
+      <button id="prev" title="Previous day with logs (left arrow)">&larr;</button>
+      <b id="daytitle"></b>
+      <button id="next" title="Next day with logs (right arrow)">&rarr;</button>
+      <span id="daystats"></span>
+      <button id="back" hidden>&larr; back to search results</button>
+    </div>
+    <div id="log"></div>
+  </main>
+
+  <aside>
+    <div class="box" id="cal"></div>
+    <div class="box">
+      <h3>Load a log</h3>
+      <div class="drop">Drop a log file here</div>
+      <input id="file" type="file" accept=".log,.txt,text/plain">
+      <textarea id="paste" placeholder="...or paste log text here"></textarea>
+      <div class="row2"><button id="load">Show pasted text</button><button id="sample">Sample</button></div>
+      <div class="legend" id="source"></div>
+    </div>
+    <div class="box" id="daystatsbox"></div>
+    <div class="box" id="stats"></div>
+  </aside>
+</div>
+
+<script>
+//
+// HOW THIS PAGE WORKS (read this first)
+// -----------------------------------
+// 1. The log text (a long string) is turned into an array of 'entry' objects by parseLog().
+// 2. index() sorts those entries into groups per day and counts chat lines per day.
+// 3. update() redraws everything: day bar, stats boxes, calendar and the log itself.
+// 4. All the draw* / render* functions build HTML with createElement (never innerHTML), so
+//    text from the log can never be run as HTML or script.
+// 5. User actions (clicking a day, typing a search...) change the 'state' object, then call update().
+//
+// Words you will meet:
+//   DOM          the page as JavaScript sees it: a tree of elements you can create/change.
+//   regex        a pattern for matching text, written between slashes: /pattern/flags
+//   Map          a dictionary: look things up by key (map.get(key), map.set(key, value))
+//   arrow fn     x => x + 1 is a short way to write a function that takes x and returns x + 1
+//   template str `text ${value}` puts a value inside a string
+//   spread ...   [...a, ...b] copies the items of a and b into a new array
+//   ?:           condition ? valueIfTrue : valueIfFalse     ||  means 'or', && means 'and'
+// ===================================================================== data
+// Demo log shown at start-up (and when you press 'Sample'). Real data replaces it as soon as pascal.log loads.
+const SAMPLE = `2026-11-06 01:35:13 --> pascal-log-bot joined
+2026-11-06 01:35:31 --> aruna joined
+2026-11-06 01:35:39 <aruna> Hello
+2026-11-06 01:37:31 --> pascal-log-bot joined
+2026-11-06 10:57:35 --> pascal-log-bot joined
+2026-11-06 10:59:53 --> Joanna joined
+2026-11-06 12:46:52 --> okinawa-bot joined
+2026-11-06 12:49:31 <JanC> Ericounet: in this case the heat is usually from classic electric heating elements (it has to be able to heat very quickly)
+2026-11-06 12:53:14 --> password joined
+2026-11-06 13:06:09 --> aruna-bot joined
+2026-11-06 13:07:40 <aruna> hello
+2026-11-06 13:08:40 --> nick12 joined
+2026-11-06 13:09:01 <nick12> nick here
+2026-11-06 13:18:17 <-- nick12 quit (Ping timeout: 262 seconds)
+2026-11-06 13:18:38 <aruna> testing
+2026-11-06 13:18:50 -- aruna is now known as moi
+2026-11-06 13:18:55 <moi> testing
+2026-11-06 13:19:04 -- moi is now known as deb
+2026-11-06 13:19:09 <deb> testing
+2026-11-06 13:19:19 -- deb is now known as Guest7851
+2026-11-06 13:19:23 -- Guest7851 is now known as vps
+2026-11-06 13:19:47 -- vps is now known as me2
+2026-11-06 13:19:52 <me2> testing
+2026-11-06 13:27:13 <-- me2 quit (Quit: Leaving)
+2026-11-06 13:36:48 --> aruna-bot joined`;
+
+// Search results show at most this many matches (the newest ones) so the page stays fast.
+const LIMIT = 2000;
+// Day and month names, used by dayLabel() and the calendar. getUTCDay() gives 0 for Sunday... 6 for Saturday.
+const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+                'September', 'October', 'November', 'December'];
+// Shortcut: $('log') means document.getElementById('log') (find the element with id="log").
+const $ = id => document.getElementById(id);
+// Turns 5 into '05' (pads with a leading zero to 2 characters). Used for dates and times.
+const pad = n => String(n).padStart(2, '0');
+
+// GLOBAL DATA. These are filled by index() each time a log is loaded.
+// entries = every parsed line in order. byDate = lines grouped per day. chatCount = chat lines per day.
+// days = sorted list of dates that have lines. maxChat = busiest day's chat count (for calendar shading).
+// hitDays = days that contain search matches. serverMode is set once the live log fetch works.
+let entries = [];             // every parsed line
+let byDate = new Map();       // '2026-11-06' -> [entries]
+let chatCount = new Map();    // '2026-11-06' -> number of chat lines
+let days = [];                // sorted dates that have lines
+let maxChat = 1;
+let hitDays = new Map();      // dates containing search results -> count
+let serverMode = false;
+
+// UI STATE: what the user is currently looking at. Change it, then call update() to redraw.
+//   day = date being read   month = month shown in the calendar   q = search words typed
+//   nick = nick chosen in the dropdown   view = 'day' or 'search'   focus = line index to scroll to
+//   results = the search matches
+const state = {day: '', month: '', q: '', nick: '', view: 'day', focus: null, results: []};
+
+// ================================================================== parsing
+
+// Join / part / quit / kick lines, whatever marker the logger puts in front of them.
+// Decides if an event line is 'noise' (a join/part/quit/kick) so the 'hide joins/parts' checkbox can hide it.
+// marker is the symbol that starts the line (-->, <-- ...). rest is the whole text of the line.
+function isJoinPart(marker, rest) {
+  // The classic arrows are always join/leave lines.
+  if (marker === '-->' || marker === '<--') return true;
+  // A nick change is NOT noise: always keep it visible.
+  if (/ is now known as /.test(rest)) return false;
+  // Otherwise look for join/leave words. \b = word boundary, | = or, the i flag ignores upper/lower case.
+  return /\b(joined|has joined|left|has left|parted|has parted|quit|has quit|kicked|was kicked|disconnected)\b/i.test(rest);
+}
+
+// "2026-11-06 13:07:40 <aruna> hello"  ->  {date, time, kind, nick, text, noise}
+// parseLine turns ONE line of text into an object, or returns null if it has no timestamp.
+// Result shape: {date, time, kind, nick, text, noise}. kind is 'msg', 'action' or 'event'.
+function parseLine(raw) {
+  // Regex for 'YYYY-MM-DD HH:MM:SS rest of line'. ^ and $ = start/end. \d = a digit.
+  // Three (...) groups capture the date, time and the rest. The s flag lets . also match newlines.
+  const m = /^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) (.*)$/s.exec(raw);
+  if (!m) return null;
+  // m[1], m[2], m[3] are what the three groups captured.
+  const date = m[1], time = m[2], rest = m[3];
+  // r will hold the result of each regex test below. exec() returns the captures, or null for 'no match'.
+  let r;
+  // Matches '* JanC (QUIT)' or '* bob (NICK bobby)': a star, a nick (\S+ = non-spaces),
+  // then a CAPITAL-LETTER code in brackets. r[1] = nick, r[2] = code.
+  // (r = ...) inside the if assigns AND tests in one go: the block runs only if there was a match.
+  if ((r = /^\* (\S+) \(([A-Z]+)\b[^)]*\)\s*$/.exec(rest))) {        // "* nick (JOIN)", "* nick (QUIT)", ...
+    // Classify the event: JOIN -> 'join', NICK -> 'nick', PART/QUIT/KICK -> 'leave', anything else ''.
+    const ev = r[2] === 'JOIN' ? 'join' : r[2] === 'NICK' ? 'nick' : /^(PART|QUIT|KICK)$/.test(r[2]) ? 'leave' : '';
+    // noise is true for joins and leaves: these are what 'hide joins/parts' removes.
+    return {date, time, kind: 'event', nick: r[1], text: rest, noise: ev === 'join' || ev === 'leave', ev};
+  }
+  // Older formats: '--> nick joined', '<-- nick quit', '-- a is now known as b', '-!-' and '***' lines.
+  if ((r = /^(-->|<--|--|-!-|\*\*\*)\s+(\S+)/.exec(rest)))
+    return {date, time, kind: 'event', nick: r[2], text: rest, noise: isJoinPart(r[1], rest)};
+  // A chat message: <nick> text.  [^>]+ means 'one or more characters that are not >'.
+  if ((r = /^<([^>]+)> ?(.*)$/s.exec(rest)))
+    return {date, time, kind: 'msg', nick: r[1], text: r[2], noise: false};
+  // A '/me' style action written as '* nick does something'.
+  if ((r = /^\* (\S+) ?(.*)$/s.exec(rest)))
+    return {date, time, kind: 'action', nick: r[1], text: r[2], noise: false};
+  // Anything unrecognised is kept as a plain event so no line is ever lost.
+  return {date, time, kind: 'event', nick: '', text: rest, noise: false};
+}
+
+// parseLog turns the WHOLE file into an array of entries.
+function parseLog(text) {
+  // out collects the entries.
+  const out = [];
+  // Split into lines. /\r?\n/ matches a newline with or without a Windows carriage return.
+  for (const raw of text.split(/\r?\n/)) {
+    // Skip empty lines ('continue' jumps to the next loop turn).
+    if (!raw) continue;
+    // Try to parse the line; null means it did not start with a timestamp.
+    const e = parseLine(raw);
+    if (e) out.push(e);
+    // No timestamp = a continuation of the previous message, so add it as an event on the same date/time.
+    else if (out.length) {                      // a line without a timestamp continues the previous one
+      const prev = out[out.length - 1];
+      out.push({date: prev.date, time: prev.time, kind: 'event', nick: '', text: raw, noise: false});
+    }
+  }
+  return out;
+}
+
+// index() stores the entries and builds the lookup tables used by everything else.
+function index(list) {
+  // Replace the global data (these four lines reset it).
+  entries = list;
+  byDate = new Map();
+  chatCount = new Map();
+  // Visit every entry; e is the entry, i its position.
+  entries.forEach((e, i) => {
+    // Remember each entry's position so we can scroll to it later (state.focus).
+    e.i = i;
+    // First time we see this date: create an empty list and a zero counter for it.
+    if (!byDate.has(e.date)) { byDate.set(e.date, []); chatCount.set(e.date, 0); }
+    // Add the entry to its day's list.
+    byDate.get(e.date).push(e);
+    // Only real chat (messages and actions) counts towards the day's 'chat lines'.
+    if (e.kind === 'msg' || e.kind === 'action') chatCount.set(e.date, chatCount.get(e.date) + 1);
+  });
+  // All dates, sorted. ISO dates (2026-11-06) sort correctly as plain text.
+  days = [...byDate.keys()].sort();
+  // Busiest day's count. The 1 stops it being 0 so shading maths never divides by zero.
+  maxChat = Math.max(1, ...chatCount.values());
+}
+
+// Gives each nick a stable colour number 0-359, so the same person is always the same colour.
+function hue(nick) {
+  let h = 0;
+  // Mix every character into h. '>>> 0' keeps h an unsigned 32-bit number; '% 360' makes it a colour wheel angle.
+  for (const c of nick.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return h % 360;
+}
+
+// Splits the search text into words, but keeps "quoted phrases" together. Returns lowercase terms.
+function terms(q) {
+  const out = [];
+  // Regex: either a "quoted phrase" (group a) or a single word (group b). The g flag means 'every match'.
+  // replace() is used here only as a loop: the callback runs once per match; its return value is ignored.
+  q.replace(/"([^"]+)"|(\S+)/g, (m, a, b) => { out.push((a || b).toLowerCase()); return m; });
+  return out;
+}
+
+// True if the entry's nick+text contains EVERY search term (so 'foo bar' needs both).
+function matches(e, ts) {
+  const hay = (e.nick + ' ' + e.text).toLowerCase();
+  return ts.every(t => hay.includes(t));
+}
+
+// '2026-11-06' -> 'Friday 6 November 2026'. T00:00:00Z means midnight UTC so timezones cannot shift the day.
+function dayLabel(d) {
+  const dt = new Date(d + 'T00:00:00Z');
+  return DOW[dt.getUTCDay()] + ' ' + dt.getUTCDate() + ' ' + MONTHS[dt.getUTCMonth()] + ' ' + dt.getUTCFullYear();
+}
+
+// The cells of a month, Sunday first: null for padding, otherwise 'YYYY-MM-DD'.
+// Returns the calendar cells for a month: null for blank cells, else 'YYYY-MM-DD'. Weeks start on Sunday.
+function monthGrid(year, month) {
+  // Which weekday the 1st falls on (0 = Sunday): that many blank cells go first.
+  const startDow = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  // Days in month: day 0 of NEXT month is the last day of this one.
+  const dim = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  // Build the list: leading blanks, the real days, then trailing blanks to fill the last week.
+  const cells = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= dim; d++) cells.push(year + '-' + pad(month) + '-' + pad(d));
+  while (cells.length % 7) cells.push(null);
+  return cells;
+}
+
+// =================================================================== search
+
+// True if the user has typed search words or picked a nick.
+function searchActive() { return terms(state.q).length > 0 || state.nick !== ''; }
+
+// Fills state.results with matching entries and hitDays with a per-day match count.
+function runSearch() {
+  // No search: clear the results and bail out.
+  if (!searchActive()) { state.results = []; hitDays = new Map(); return; }
+  // ts = search terms. hide = state of the 'hide joins/parts' checkbox.
+  const ts = terms(state.q), hide = $('hide').checked;
+  // filter keeps entries for which the test is true: not hidden noise, right nick (if chosen), and matching words.
+  state.results = entries.filter(e =>
+    !(hide && e.noise) && (!state.nick || e.nick === state.nick) && matches(e, ts));
+  hitDays = new Map();
+  // Count matches per day: (current count or 0) + 1.
+  for (const e of state.results) hitDays.set(e.date, (hitDays.get(e.date) || 0) + 1);
+}
+
+// ================================================================= rendering
+
+// Helper: append children to parent. Strings become text nodes, which are always safe (never parsed as HTML).
+// '...kids' collects all extra arguments into an array. It returns parent so calls can be nested.
+function add(parent, ...kids) {
+  for (const k of kids) parent.appendChild(typeof k === 'string' ? document.createTextNode(k) : k);
+  return parent;
+}
+// Helper: create an element, e.g. el('div', 'row', 'hi') makes <div class="row">hi</div>.
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+// Put str into node, wrapping search words in <mark>. Never uses innerHTML.
+// Writes str into node and wraps each search term in <mark> to highlight it. No innerHTML.
+function highlightInto(node, str, ts) {
+  // No terms: just add the text.
+  if (!ts.length) { add(node, str); return; }
+  // Build one regex from all terms: escape characters with special meaning (. * + ? ^ $ { } ( ) | [ ] \)
+  // then join with | into (a|b|c). The g and i flags mean every match, ignoring case.
+  const re = new RegExp('(' + ts.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'gi');
+  // Splitting on a regex with brackets keeps the matches, which land at ODD positions (i % 2).
+  // Odd = a match -> wrap in <mark>; even = ordinary text. Empty pieces are skipped.
+  str.split(re).forEach((part, i) => { if (part !== '') add(node, i % 2 ? el('mark', '', part) : part); });
+}
+
+// Builds one log row (a div). hit = highlight as a search hit. jump = make the time a link to that day.
+function rowFor(e, ts, hit, jump) {
+  // CSS classes: 'row', the kind (msg/action/event), plus 'hit' and 'focus' when they apply.
+  const row = el('div', 'row ' + e.kind + (hit ? ' hit' : '') + (state.focus === e.i ? ' focus' : ''));
+  // The time is a button so it can be clicked (when jump is true).
+  const t = el('button', 'time' + (jump ? ' link' : ''), e.time);
+  t.title = jump ? 'Open ' + e.date + ' at this line' : e.date + ' ' + e.time;
+  // Open that day and scroll to this exact line (selectDay's second argument).
+  if (jump) t.onclick = () => selectDay(e.date, e.i);
+  add(row, t);
+  // Chat lines get a coloured nick: <nick> for messages, '* nick' for actions.
+  if (e.kind === 'msg' || e.kind === 'action') {
+    const who = el('span', 'nick');
+    // Pass the colour number to CSS through the variable --h; the stylesheet turns it into a colour.
+    who.style.setProperty('--h', hue(e.nick));
+    who.title = 'Search for ' + e.nick;
+    // Clicking a nick filters the whole log to that person.
+    who.onclick = () => { $('nick').value = e.nick; setNick(e.nick); };
+    add(who, e.kind === 'msg' ? '<' : '* ');
+    // Add the nick text, with search terms highlighted.
+    highlightInto(who, e.nick, ts);
+    if (e.kind === 'msg') add(who, '>');
+    add(row, who);
+  }
+  // The message text, also highlighted.
+  const txt = el('span', 'txt');
+  highlightInto(txt, e.text, ts);
+  add(row, txt);
+  // Hand the finished row back to the caller.
+  return row;
+}
+
+// Draws the main log area: either search results (grouped by day) or one day.
+function renderLog() {
+  // box = the log container. ts = search terms. hide = the checkbox.
+  const box = $('log'), ts = terms(state.q), hide = $('hide').checked;
+  // Clear everything currently inside (setting textContent to '' removes all children).
+  box.textContent = '';
+  // Are we showing the search-results view?
+  const inSearch = state.view === 'search' && searchActive();
+  // Hide the day arrows while looking at search results.
+  $('daybar').hidden = inSearch;
+  // Show 'back to search results' only when reading a day that was opened from a search.
+  $('back').hidden = !(state.view === 'day' && searchActive());
+  // Nothing loaded yet: show a hint and stop.
+  if (!entries.length) { add(box, el('p', 'empty', 'No log loaded. Load a file, paste text, or try the sample.')); return; }
+
+  // SEARCH VIEW: all matches, with a heading button each time the date changes.
+  if (inSearch) {                                   // all matches, grouped by day
+    // slice(-2000) = the last 2000 items, to keep the page quick.
+    const shown = state.results.slice(-LIMIT);
+    if (!shown.length) add(box, el('p', 'empty', 'No matches.'));
+    // Track the day of the previous row so we know when a new heading is needed.
+    let day = '';
+    for (const e of shown) {
+      // New day: add a clickable heading showing the date and how many matches it had.
+      if (e.date !== day) {
+        day = e.date;
+        const h = el('div', 'day'), b = el('button', '', dayLabel(day) + '  (' + hitDays.get(day) + ')');
+        // Copy day into d so the click handler remembers THIS day (day changes as the loop continues).
+        const d = day;
+        b.title = 'Read this day';
+        b.onclick = () => selectDay(d);
+        box.appendChild(add(h, b));
+      }
+      box.appendChild(rowFor(e, ts, false, true));
+    }
+    return;
+  }
+
+  // DAY VIEW: the entries of the selected day, minus hidden noise.
+  const list = (byDate.get(state.day) || []).filter(e => !(hide && e.noise));
+  if (!list.length) add(box, el('p', 'empty', 'Nothing to show for this day.'));
+  // If we arrived from a search result, remember the row to scroll to.
+  let focusRow = null;
+  for (const e of list) {
+    // Highlight rows that match the search while reading a day.
+    const row = rowFor(e, ts, ts.length > 0 && matches(e, ts), false);
+    if (state.focus === e.i) focusRow = row;
+    box.appendChild(row);
+  }
+  // Scroll the wanted line to the middle of the screen.
+  if (focusRow && focusRow.scrollIntoView) focusRow.scrollIntoView({block: 'center'});
+}
+
+// Updates the bar with the day title, arrows and chat-line count.
+function renderDayBar() {
+  // Position of the current day in the list; -1 if not found.
+  const i = days.indexOf(state.day);
+  // Disable the arrows at either end of the list.
+  $('prev').disabled = i <= 0;
+  $('next').disabled = i < 0 || i >= days.length - 1;
+  $('daytitle').textContent = state.day ? dayLabel(state.day) : '';
+  const lines = state.day ? chatCount.get(state.day) || 0 : 0;
+  $('daystats').textContent = state.day ? lines + ' chat line' + (lines === 1 ? '' : 's') : '';
+  $('back').textContent = '\u2190 back to ' + state.results.length.toLocaleString() + ' search results';
+}
+
+// Draws the month calendar. Days with logs are clickable; busier days are darker.
+function renderCalendar() {
+  const box = $('cal');
+  box.textContent = '';
+  if (!state.month) { add(box, el('h3', '', 'Calendar'), el('div', 'legend', 'Nothing loaded.')); return; }
+  // '2026-11' -> split on '-' -> [2026, 11]. The [y, m] on the left unpacks the two values.
+  const [y, m] = state.month.split('-').map(Number);
+
+  // Header: previous-month button, month name, next-month button. \u2039 and \u203a are the < > symbols.
+  const head = el('div', 'head');
+  const prev = el('button', '', '\u2039'), next = el('button', '', '\u203a');
+  prev.title = 'Previous month'; next.title = 'Next month';
+  prev.onclick = () => shiftMonth(-1);
+  next.onclick = () => shiftMonth(1);
+  add(head, prev, el('span', '', MONTHS[m - 1] + ' ' + y), next);
+  box.appendChild(head);
+
+  // Build the grid: a header row of weekday names, then a row per week.
+  const table = el('table', 'cal'), thead = el('tr');
+  for (const d of ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']) add(thead, el('th', '', d));
+  add(table, thead);
+  // Get the cells and walk through them 7 at a time (one week per row).
+  const cells = monthGrid(y, m);
+  for (let r = 0; r < cells.length; r += 7) {
+    const tr = el('tr');
+    for (const d of cells.slice(r, r + 7)) {
+      const td = el('td');
+      if (d) {
+        // Chat lines that day (0 if none).
+        const n = chatCount.get(d) || 0;
+        // Shading level by share of the busiest day: >75% l4, >50% l3, >25% l2, else none.
+        const level = n === 0 ? '' : n > maxChat * 0.75 ? ' l4' : n > maxChat * 0.5 ? ' l3' : n > maxChat * 0.25 ? ' l2' : '';
+        // Each day is a button. CSS classes: has/none (log exists?), level, hit (search match), sel (selected).
+        const b = el('button', (days.includes(d) ? 'has' : 'none') + level +
+                     (hitDays.has(d) ? ' hit' : '') + (d === state.day && state.view === 'day' ? ' sel' : ''),
+                     String(Number(d.slice(8))));
+        // Hover text: how many chat lines, and how many search matches if any.
+        b.title = days.includes(d)
+          ? n + ' chat line' + (n === 1 ? '' : 's') + (hitDays.has(d) ? ', ' + hitDays.get(d) + ' match' + (hitDays.get(d) === 1 ? '' : 'es') : '')
+          : 'No log';
+        // Only days with logs are clickable.
+        if (days.includes(d)) b.onclick = () => selectDay(d);
+        add(td, b);
+      }
+      add(tr, td);
+    }
+    add(table, tr);
+  }
+  box.appendChild(table);
+
+  // Bottom controls: a month dropdown and a 'Latest' button.
+  const row = el('div', 'row2');
+  const sel = el('select');
+  sel.title = 'Jump to a month that has logs';
+  // Unique 'YYYY-MM' values: a Set drops duplicates, then [...] turns it back into an array.
+  const months = [...new Set(days.map(d => d.slice(0, 7)))];
+  for (const ym of months) {
+    const o = el('option', '', MONTHS[Number(ym.slice(5)) - 1] + ' ' + ym.slice(0, 4));
+    o.value = ym;
+    add(sel, o);
+  }
+  sel.value = state.month;
+  // Choosing a month just redraws the calendar for it.
+  sel.onchange = () => { state.month = sel.value; renderCalendar(); };
+  // 'Latest' jumps to the newest day.
+  const latest = el('button', '', 'Latest');
+  latest.onclick = () => selectDay(days[days.length - 1]);
+  add(row, sel, latest);
+  box.appendChild(row);
+  // Legend text changes while a search is showing matches.
+  box.appendChild(el('div', 'legend', hitDays.size ? 'Orange outline = days with search matches' : 'Darker = busier day'));
+}
+
+// Numbers for a list of entries (one day, or the whole log).
+// Counts things in a list of entries. Used for one day AND for the whole log.
+function computeStats(list) {
+  // s collects the totals: counts, a Map of who spoke how often, and 24 hourly counters (all start at 0).
+  const s = {lines: list.length, msgs: 0, actions: 0, words: 0, joins: 0, leaves: 0, renames: 0, other: 0,
+             speakers: new Map(), hours: new Array(24).fill(0), first: '', last: ''};
+  // Look at every entry once and drop it into the right bucket.
+  for (const e of list) {
+    // CHAT LINE: count it, add its words, speaker and hour.
+    if (e.kind === 'msg' || e.kind === 'action') {
+      if (e.kind === 'msg') s.msgs++; else s.actions++;
+      // Words = pieces separated by whitespace; filter(Boolean) throws away empty pieces.
+      s.words += e.text.split(/\s+/).filter(Boolean).length;
+      // Speaker tally: current count (or 0) + 1.
+      s.speakers.set(e.nick, (s.speakers.get(e.nick) || 0) + 1);
+      // First two characters of the time are the hour: '19:20:28' -> 19. Add one to that hour's counter.
+      s.hours[Number(e.time.slice(0, 2))]++;
+      // The first chat time is stored once; last is overwritten each time, so it ends as the latest.
+      if (!s.first) s.first = e.time;
+      s.last = e.time;
+    // NON-CHAT LINES: joins, leaves, nick changes, anything else (checked in that order).
+    } else if (e.ev === 'join' || (!e.ev && e.noise && (e.text.startsWith('-->') || /\bjoined\b/i.test(e.text)))) s.joins++;
+    else if (e.noise) s.leaves++;
+    else if (e.ev === 'nick' || / is now known as /.test(e.text)) s.renames++;
+    else s.other++;
+  }
+  // Total chat lines.
+  s.chat = s.msgs + s.actions;
+  return s;
+}
+
+// Adds a 'label ........ value' row to a stats box.
+function kv(box, label, value) {
+  add(box, add(el('div', 'kv'), el('span', '', label), el('span', '', String(value))));
+}
+
+// Draws the stats shown in both boxes. topN = how many 'most active' names to list.
+function statBlock(box, s, topN) {
+  // The number rows. toLocaleString() adds thousands separators (1,234).
+  kv(box, 'Chat lines', s.chat.toLocaleString() + (s.actions ? ' (' + s.actions.toLocaleString() + ' actions)' : ''));
+  kv(box, 'People talking', s.speakers.size);
+  kv(box, 'Words', s.words.toLocaleString());
+  if (s.chat) kv(box, 'Avg words / line', (s.words / s.chat).toFixed(1));
+  if (s.first) kv(box, 'First / last chat', s.first.slice(0, 5) + ' / ' + s.last.slice(0, 5));
+  kv(box, 'Joins / leaves', s.joins + ' / ' + s.leaves);
+  kv(box, 'Nick changes', s.renames);
+  if (s.other) kv(box, 'Other events', s.other);
+
+  // Charts only make sense when there is chat.
+  if (s.chat) {
+    // The busiest hour's count: the tallest bar, so every other bar is scaled against it.
+    const peak = Math.max(...s.hours);
+    add(box, el('h3', 'sub', 'Chat by hour (UTC)'));
+    const chart = el('div', 'hours');
+    // One bar per hour. n = lines in that hour, h = the hour (0-23).
+    s.hours.forEach((n, h) => {
+      const bar = el('i', n === peak ? 'peak' : '');
+      // Bar height as a percentage of the tallest bar.
+      bar.style.height = Math.round(n / peak * 100) + '%';
+      bar.title = pad(h) + ':00  ' + n + ' line' + (n === 1 ? '' : 's');
+      chart.appendChild(bar);
+    });
+    // Add the chart plus the 00 / 06 / 12 / 18 / 23 labels under it.
+    add(box, chart, add(el('div', 'hourlab'), el('span', '', '00'), el('span', '', '06'), el('span', '', '12'), el('span', '', '18'), el('span', '', '23')));
+    kv(box, 'Busiest hour', pad(s.hours.indexOf(peak)) + ':00 (' + peak + ')');
+
+    // Turn the Map into [name, count] pairs, sort biggest first (ties by name), keep the top few.
+    // sort's callback returns negative/positive/0 to order two items; b[1] - a[1] sorts by count, descending.
+    const top = [...s.speakers.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, topN);
+    const t = el('div', 'talkers');
+    // One row per top speaker: name, count and percentage, with a thin bar under it.
+    for (const [n, c] of top) {
+      const line = el('div', 't'), b = el('b', '', n);
+      b.style.setProperty('--h', hue(n));
+      b.title = 'Search for ' + n;
+      b.onclick = () => { $('nick').value = n; setNick(n); };
+      add(line, b, el('span', '', c + '  (' + Math.round(c / s.chat * 100) + '%)'));
+      const m = el('div', 'meter');
+      // Bar width relative to the top speaker (who is 100%).
+      m.style.width = Math.round(c / top[0][1] * 100) + '%';
+      add(t, line, m);
+    }
+    add(box, el('h3', 'sub', 'Most active'), t);
+  }
+}
+
+// Fills the 'Stats for <date>' box using only that day's entries.
+function renderDayStats() {
+  const box = $('daystatsbox');
+  box.textContent = '';
+  if (!state.day || !byDate.has(state.day)) return;
+  add(box, el('h3', '', 'Stats for ' + state.day));
+  statBlock(box, computeStats(byDate.get(state.day)), 5);
+}
+
+// Fills the 'Whole log' box. It only needs redrawing when a log is (re)loaded.
+function renderStats() {
+  const box = $('stats');
+  box.textContent = '';
+  add(box, el('h3', '', 'Whole log'));
+  if (!entries.length) return;
+  // Same counting function, applied to everything.
+  const s = computeStats(entries);
+  kv(box, 'Total lines', s.lines.toLocaleString());
+  kv(box, 'Days', days.length + ' (' + days[0] + (days.length > 1 ? ' to ' + days[days.length - 1] : '') + ')');
+  // new Set(...) removes duplicate nicks, .size counts what is left.
+  kv(box, 'Unique nicks', new Set(entries.filter(e => e.nick).map(e => e.nick)).size);
+  if (days.length) {
+    kv(box, 'Avg chat lines / day', (s.chat / days.length).toFixed(1));
+    // Days sorted busiest first (a [date, count] pair each; ties by date).
+    const ranked = [...chatCount.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+    // Busiest = first, quietest = last.
+    const busy = ranked[0], quiet = ranked[ranked.length - 1];
+    const bb = el('b', '', busy[0] + ' (' + busy[1] + ')');
+    bb.style.cursor = 'pointer';
+    bb.title = 'Open this day';
+    bb.onclick = () => selectDay(busy[0]);
+    add(box, add(el('div', 'kv'), el('span', '', 'Busiest day'), bb));
+    if (ranked.length > 1) kv(box, 'Quietest day', quiet[0] + ' (' + quiet[1] + ')');
+  }
+  // Then the shared stats and top 10 speakers.
+  statBlock(box, s, 10);
+}
+
+// Remembers the nick list so the dropdown is only rebuilt when the names change.
+let nickKey = '';
+// Fills the nick dropdown with every nick seen, sorted case-insensitively.
+function fillNicks() {
+  // Unique nicks (Set) -> array -> sorted.
+  const names = [...new Set(entries.filter(e => e.nick).map(e => e.nick))]
+    .sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : 1));
+  // Same list as last time? Do nothing, so the live refresh never resets the user's choice.
+  if (names.join('\n') === nickKey) return;
+  nickKey = names.join('\n');
+  // keep = the current choice, restored after rebuilding.
+  const sel = $('nick'), keep = sel.value;
+  sel.textContent = '';
+  const first = el('option', '', 'All nicks');
+  first.value = '';
+  sel.appendChild(first);
+  for (const n of names) { const o = el('option', '', n); o.value = n; sel.appendChild(o); }
+  // Put the user's previous selection back.
+  sel.value = keep;
+}
+
+// THE MAIN REDRAW. Call it after anything changes. Order matters: search first, then the parts that depend on it.
+function update() {
+  // Recompute search results from the current state.
+  runSearch();
+  // No search = always show a day.
+  if (!searchActive()) state.view = 'day';
+  renderDayBar();
+  renderDayStats();
+  renderCalendar();
+  renderLog();
+  // The little status line: '12 matches in 3 days' (and a note if results were capped).
+  $('info').textContent = state.view === 'search' && searchActive()
+    ? state.results.length.toLocaleString() + (state.results.length === 1 ? ' match' : ' matches') + ' in ' + hitDays.size + ' day' + (hitDays.size === 1 ? '' : 's') +
+      (state.results.length > LIMIT ? ' (showing the last ' + LIMIT + ')' : '')
+    : '';
+}
+
+// ================================================================== actions
+
+// Open a day. focus (optional) = the line to scroll to.
+function selectDay(d, focus) {
+  // Ignore dates that have no log.
+  if (!byDate.has(d)) return;
+  state.day = d;
+  state.month = d.slice(0, 7);
+  state.view = 'day';
+  state.focus = focus === undefined ? null : focus;
+  // Put the date in the address bar (#2026-11-06) so it can be bookmarked. try/catch: some pages forbid it.
+  try { history.replaceState(null, '', '#' + d); } catch (e) { /* not allowed on some file:// pages */ }
+  update();
+  // Normal navigation jumps to the top; a focused line scrolls itself into view instead.
+  if (state.focus === null) scrollTo(0, 0);
+}
+
+// Move to the previous (-1) or next (+1) day that has logs.
+function stepDay(delta) {
+  const i = days.indexOf(state.day);
+  if (i >= 0 && days[i + delta]) selectDay(days[i + delta]);
+}
+
+// Change the calendar month, wrapping December -> January (and back) and adjusting the year.
+function shiftMonth(delta) {
+  let [y, m] = state.month.split('-').map(Number);
+  m += delta;
+  if (m < 1) { m = 12; y--; }
+  if (m > 12) { m = 1; y++; }
+  state.month = y + '-' + pad(m);
+  renderCalendar();
+}
+
+// A new search was typed: store it, choose search or day view, redraw, scroll to top.
+function setQuery(value) {
+  state.q = value;
+  state.focus = null;
+  state.view = searchActive() ? 'search' : 'day';
+  update();
+  scrollTo(0, 0);
+}
+
+// A nick was chosen: filter by that person (same idea as setQuery).
+function setNick(value) {
+  state.nick = value;
+  state.focus = null;
+  state.view = searchActive() ? 'search' : 'day';
+  update();
+  scrollTo(0, 0);
+}
+
+// Load log text. keep = keep the current day (used when the log grows in the background).
+// Load a whole log (from the live file, a dropped file, pasted text or the sample).
+// keep=true means 'this is a background refresh', so try not to move the user.
+function loadText(text, label, keep) {
+  // Was the user looking at the newest day before the reload?
+  const wasLatest = state.day === days[days.length - 1];
+  // Parse the text, then build the lookup tables.
+  index(parseLog(text));
+  fillNicks();
+  // Read a date from the address bar (#2026-11-06) if there is one, for bookmarks and shared links.
+  const fromHash = (/^#(\d{4}-\d\d-\d\d)$/.exec(typeof location !== 'undefined' ? location.hash : '') || [])[1];
+  // Background refresh while reading an OLDER day: stay on it.
+  if (keep && state.day && byDate.has(state.day) && !wasLatest) { /* stay where we are */ }
+  // Fresh load with a valid date in the address bar: open that day.
+  else if (!keep && fromHash && byDate.has(fromHash)) state.day = fromHash;
+  // Otherwise go to the newest day (so live updates follow the latest activity).
+  else state.day = days[days.length - 1] || '';
+  // Calendar shows the month of the chosen day.
+  state.month = state.day ? state.day.slice(0, 7) : '';
+  state.focus = null;
+  // Page heading and the 'N lines loaded from ...' note.
+  $('title').textContent = label || 'IRC log';
+  $('source').textContent = entries.length.toLocaleString() + ' lines loaded from ' + (label || 'text');
+  // Redraw the whole-log stats, then everything else.
+  renderStats();
+  update();
+}
+
+// The log file to read automatically. It is relative, so it must be in the same folder as this page (and served over http).
+const LOGFILE = 'pascal.log';          // read automatically, from the same folder as this page
+// Which URL/label is currently being polled.
+let liveUrl = '', liveLabel = '';
+
+// Download the log text. async + await = 'wait for the slow thing without freezing the page'.
+// cache: 'no-store' forces a fresh copy each time instead of a cached one.
+async function fetchLive() {
+  const r = await fetch(liveUrl, {cache: 'no-store'});
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.text();
+}
+
+// Try to load the log automatically, then keep checking for new lines.
+async function tryServer() {
+  // Browsers refuse to let a page opened as a file read other files, so this only works over http(s).
+  const isHttp = typeof location !== 'undefined' && /^https?:$/.test(location.protocol);
+  // Opened as a file: explain why it cannot auto-load, and stop.
+  if (!isHttp) {
+    $('source').textContent = 'Could not read ' + LOGFILE + ' automatically: browsers block that for pages opened as files. ' +
+      'Serve this folder (e.g. run "python3 -m http.server" here and open http://localhost:8000/), or drop the log file on the page.';
+    return false;
+  }
+  // Try pascal.log first, then fall back to /history (the original logger's address).
+  for (const [url, label] of [[LOGFILE, LOGFILE + ' (live)'], ['/history', 'the logger (live)']]) {
+    try {
+      // Remember which source we are trying.
+      liveUrl = url; liveLabel = label;
+      // Download it. If this throws (e.g. file not found) the catch below moves on to the next source.
+      const text = await fetchLive();
+      lastLength = text.length;
+      loadText(text, label);
+      // Mark that a live source works.
+      serverMode = true;
+      // Every 10 seconds, download again. Only if the length changed do we reload (cheap check for new lines).
+      setInterval(async () => {                         // pick up new lines as the file grows
+        try {
+          const t = await fetchLive();
+          if (t.length !== lastLength) { lastLength = t.length; loadText(t, liveLabel, true); }
+        } catch (e) { /* try again next time */ }
+      }, 10000);
+      return true;
+    } catch (e) { /* try the next source */ }
+  }
+  // Neither source worked: tell the user to drop a file instead.
+  $('source').textContent = 'Could not find ' + LOGFILE + ' next to this page. Drop a log file here instead.';
+  return false;
+}
+// Length of the last download. (Declared after the function that uses it; fine, because the function only runs later.)
+let lastLength = -1;
+
+// 'light' or 'dark' sets a data-theme attribute on <html>, which the CSS reacts to. Anything else removes it (auto).
+function applyTheme(t) {
+  const root = document.documentElement;
+  if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t); else root.removeAttribute('data-theme');
+}
+
+// START-UP: wire every control to its function, then load data.
+function main() {
+  // Read the remembered theme from localStorage (the browser's small per-site storage).
+  // try/catch because storage can be blocked, in which case we just use 'auto'.
+  let saved = 'auto';
+  try { saved = localStorage.getItem('ircviewer-theme') || 'auto'; } catch (e) { /* storage blocked */ }
+  $('theme').value = saved;
+  applyTheme(saved);
+  // Changing the theme applies it and saves the choice.
+  $('theme').onchange = () => {
+    applyTheme($('theme').value);
+    try { localStorage.setItem('ircviewer-theme', $('theme').value); } catch (e) { /* ignore */ }
+  };
+  // Search debounce: wait 150 ms after the last keystroke so we do not re-search on every key.
+  let timer;
+  // Each keystroke cancels the old timer and starts a new one.
+  $('q').oninput = () => { clearTimeout(timer); const v = $('q').value; timer = setTimeout(() => setQuery(v), 150); };
+  // Controls: nick dropdown, hide-joins checkbox, previous/next day, back-to-results.
+  $('nick').onchange = () => setNick($('nick').value);
+  $('hide').onchange = () => update();
+  $('prev').onclick = () => stepDay(-1);
+  $('next').onclick = () => stepDay(1);
+  $('back').onclick = () => { state.view = 'search'; update(); scrollTo(0, 0); };
+  // Load buttons: Sample, pasted text, and the file chooser. f.text() reads the file's contents.
+  $('sample').onclick = () => loadText(SAMPLE, 'sample data');
+  $('load').onclick = () => { const t = $('paste').value; if (t.trim()) loadText(t, 'pasted text'); };
+  $('file').onchange = async () => {
+    const f = $('file').files && $('file').files[0];
+    if (f) loadText(await f.text(), f.name);
+  };
+
+  // DRAG AND DROP: preventDefault() stops the browser opening the file itself; the body class styles the highlight.
+  document.addEventListener('dragover', ev => { ev.preventDefault(); document.body.className = 'dragging'; });
+  document.addEventListener('dragleave', () => { document.body.className = ''; });
+  // On drop, read the first file and load it.
+  document.addEventListener('drop', async ev => {
+    ev.preventDefault();
+    document.body.className = '';
+    const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+    if (f) loadText(await f.text(), f.name);
+  });
+
+  // KEYBOARD SHORTCUTS: '/' focuses search, Esc clears it, left/right arrows step through days.
+  document.addEventListener('keydown', ev => {
+    // Do not trigger shortcuts while the user is typing in a field.
+    const typing = ev.target && /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName || '');
+    if (ev.key === 'Escape' && ev.target === $('q')) { $('q').value = ''; setQuery(''); return; }
+    if (typing) return;
+    if (ev.key === '/') { ev.preventDefault(); $('q').focus(); }
+    else if (ev.key === 'ArrowLeft') stepDay(-1);
+    else if (ev.key === 'ArrowRight') stepDay(1);
+  });
+
+  // Show the sample straight away so the page is never empty...
+  loadText(SAMPLE, 'sample data');                     // something to look at straight away
+  // ...then try to replace it with the real log.
+  tryServer();                                         // if served by the logger, use the real log instead
+}
+// Run everything.
+main();
+</script>
+</body>
+</html>
