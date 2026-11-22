@@ -35,7 +35,7 @@ PORT = 6697                 # TLS
 NICK = "history-bot"        # must be unique on the network
 CHANNEL = "#pascal"
 LOG_FILE = "pascal.log"
-WEB_LOG_FILE = "/var/www/example.com/html/pascal.log"   # copy served to the web page
+WEB_LOG_FILE = "/var/www/pascal.sahanaya.net/html/pascal.log"   # copy served to the web page
 ```
 
 ### 2. Prepare the web directory
@@ -43,8 +43,8 @@ WEB_LOG_FILE = "/var/www/example.com/html/pascal.log"   # copy served to the web
 Copy the page into your web root, and copy any existing log so the history isn't empty:
 
 ```bash
-cp index.html /var/www/example.com/html/
-cp pascal.log  /var/www/example.com/html/   # only if you already have a log
+cp index.html /var/www/pascal.sahanaya.net/html/
+cp pascal.log  /var/www/pascal.sahanaya.net/html/   # only if you already have a log
 ```
 
 The user running the bot must be able to write to `WEB_LOG_FILE`. If it can't, the bot prints a single `!!! Could not write ...` warning and keeps logging locally. A common fix:
