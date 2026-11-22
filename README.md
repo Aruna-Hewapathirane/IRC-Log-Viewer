@@ -1,4 +1,6 @@
 # IRC-Log-Viewer
+<img width="1853" height="889" alt="image" src="https://github.com/user-attachments/assets/0bd246e3-4696-4984-a59b-92b5185a66b9" />
+
 
 # #pascal IRC channel history
 
