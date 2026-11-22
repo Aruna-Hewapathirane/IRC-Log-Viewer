@@ -52,8 +52,10 @@ cp pascal.log  /var/www/pascal.sahanaya.net/html/   # only if you already have a
 The user running the bot must be able to write to `WEB_LOG_FILE`. If it can't, the bot prints a single `!!! Could not write ...` warning and keeps logging locally. A common fix:
 
 ```bash
-sudo chown <bot-user>:www-data /var/www/example.com/html/pascal.log
-sudo chmod 664 /var/www/example.com/html/pascal.log
+sudo chown <bot-user>:www-data /var/www/
+
+.com/html/pascal.log
+sudo chmod 664 /var/www/pascal.sahanaya.net/html/pascal.log
 ```
 
 ### 3. Start the logger
@@ -122,7 +124,6 @@ journalctl -u pascal-logger -f      # watch the output
 - **Raw log:** downloads `pascal.log`.
 - Image links in messages get an inline preview.
 
-> The four toolbar buttons are currently **disabled** in `index.html`. To enable the two paging buttons, set `BUTTONS_DISABLED` to `false` near the top of the script. To enable **Hide events** and **Raw log**, also remove the `disabled` and `aria-disabled` attributes from their tags.
 
 Page settings are constants at the top of the script in `index.html`:
 
