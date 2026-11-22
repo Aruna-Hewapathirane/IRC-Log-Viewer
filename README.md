@@ -5,18 +5,18 @@
 A small IRC logger and a web page for reading the log.
 
 - **`log.py`** connects to Libera.Chat, joins a channel, and appends everything it sees to a plain-text log.
-- **`pascal.html`** is a static page that loads that log in the browser and shows it as a searchable, live-updating chat history.
+- **`index.html`** is a static page that loads that log in the browser and shows it as a searchable, live-updating chat history.
 
 There is no backend, database, or build step. Python 3 (standard library only) writes the log, and any web server can serve the page.
 
 ## How it works
 
 ```
-IRC channel ──► log.py ──► pascal.log ──► (web server) ──► pascal.html in your browser
+IRC channel ──► log.py ──► pascal.log ──► (web server) ──► index.html in your browser
                    └─────► <web dir>/pascal.log ─────────────┘
 ```
 
-`log.py` writes every line to a local `pascal.log` and also to a copy inside your web directory. `pascal.html` fetches that copy every 3 seconds and parses it in the browser.
+`log.py` writes every line to a local `pascal.log` and also to a copy inside your web directory. `index.html` fetches that copy every 3 seconds and parses it in the browser.
 
 ## Requirements
 
@@ -43,7 +43,7 @@ WEB_LOG_FILE = "/var/www/example.com/html/pascal.log"   # copy served to the web
 Copy the page into your web root, and copy any existing log so the history isn't empty:
 
 ```bash
-cp pascal.html /var/www/example.com/html/
+cp index.html /var/www/example.com/html/
 cp pascal.log  /var/www/example.com/html/   # only if you already have a log
 ```
 
@@ -70,7 +70,7 @@ Make sure only one copy is running (`ps aux | grep log.py`). Two instances appen
 
 ### 4. Open the page
 
-Visit `https://example.com/pascal.html`. It reads `pascal.log` from the same folder.
+Visit `https://example.com/`. The web server serves `index.html` by default, and it reads `pascal.log` from the same folder.
 
 **Testing locally?** From the folder containing both files, run:
 
@@ -78,7 +78,7 @@ Visit `https://example.com/pascal.html`. It reads `pascal.log` from the same fol
 python3 -m http.server 8000
 ```
 
-then open `http://localhost:8000/pascal.html`. Opening the HTML file directly (`file://`) will not work, because browsers block `fetch()` on local files.
+then open `http://localhost:8000/`. Opening the HTML file directly (`file://`) will not work, because browsers block `fetch()` on local files.
 
 ## Run as a service (recommended)
 
@@ -120,9 +120,9 @@ journalctl -u pascal-logger -f      # watch the output
 - **Raw log:** downloads `pascal.log`.
 - Image links in messages get an inline preview.
 
-> The four toolbar buttons are currently **disabled** in `pascal.html`. To enable the two paging buttons, set `BUTTONS_DISABLED` to `false` near the top of the script. To enable **Hide events** and **Raw log**, also remove the `disabled` and `aria-disabled` attributes from their tags.
+> The four toolbar buttons are currently **disabled** in `index.html`. To enable the two paging buttons, set `BUTTONS_DISABLED` to `false` near the top of the script. To enable **Hide events** and **Raw log**, also remove the `disabled` and `aria-disabled` attributes from their tags.
 
-Page settings are constants at the top of the script in `pascal.html`:
+Page settings are constants at the top of the script in `index.html`:
 
 | Constant | Default | Purpose |
 |---|---|---|
@@ -147,7 +147,7 @@ Lines with no timestamp are treated as a continuation of the previous message.
 
 ## Troubleshooting
 
-- **Page says "Reconnecting…" or stays empty:** the browser can't fetch `pascal.log`. Check that it sits next to `pascal.html` and that you're loading the page over `http(s)://`, not `file://`.
+- **Page says "Reconnecting…" or stays empty:** the browser can't fetch `pascal.log`. Check that it sits next to `index.html` and that you're loading the page over `http(s)://`, not `file://`.
 - **Web copy isn't updating:** check the bot's output for `!!! Could not write ...` and fix the file permissions.
 - **Repeated `Connection closed by server` errors:** another copy of the bot may be running with the same nick, or the server is rejecting the connection. Stop extra instances and check the nick isn't already in use.
 - **Slow page with a very large log:** the page downloads the whole file on each refresh. Rotate the log (for example monthly) if it grows past a few MB.
